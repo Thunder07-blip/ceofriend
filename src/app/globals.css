@@ -1,0 +1,224 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #0a0b0f;
+  --color-foreground: #e8eaf0;
+  --color-surface: #12141c;
+  --color-surface-hover: #1a1d28;
+  --color-border: #1e2130;
+  --color-accent: #6366f1;
+  --color-accent-glow: #818cf833;
+  --color-risk-critical: #ef4444;
+  --color-risk-high: #f97316;
+  --color-risk-medium: #eab308;
+  --color-risk-low: #22c55e;
+  --color-safe: #10b981;
+  --color-money: #f59e0b;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  min-height: 100vh;
+  background-color: #0a0b0f;
+  color: #e8eaf0;
+}
+
+body {
+  font-family: var(--font-geist-sans, "Inter", system-ui, -apple-system, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #12141c; }
+::-webkit-scrollbar-thumb { background: #1e2130; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+
+/* ---- Animations ---- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px #818cf833; }
+  50% { box-shadow: 0 0 40px #818cf833, 0 0 60px #818cf833; }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+.animate-slide-up { animation: slideUp 0.6s ease-out forwards; }
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-count { animation: countUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+/* ---- Glass Card ---- */
+.glass-card {
+  background: linear-gradient(135deg, rgba(18, 20, 28, 0.95), rgba(26, 29, 40, 0.8));
+  border: 1px solid #1e2130;
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  border-color: #6366f1;
+  box-shadow: 0 0 20px #818cf833;
+  transform: translateY(-2px);
+}
+
+/* ---- Gradient Texts ---- */
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-money {
+  background: linear-gradient(135deg, #f59e0b, #f97316, #ef4444);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ---- Page Container ---- */
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+  width: 100%;
+}
+
+/* ---- Navbar ---- */
+.navbar {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  z-index: 50;
+  border-bottom: 1px solid #1e2130;
+  background: rgba(10, 11, 15, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.navbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ---- Section spacing ---- */
+.section {
+  padding-top: 80px;
+  padding-bottom: 80px;
+  border-top: 1px solid #1e2130;
+}
+
+/* ---- Metric Cards Grid ---- */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+}
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Feature Cards Grid ---- */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 32px;
+}
+@media (max-width: 768px) {
+  .features-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Steps ---- */
+.step-card {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 24px;
+}
+.step-number {
+  font-size: 2rem;
+  font-weight: 900;
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+/* ---- Risk table ---- */
+.risk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.risk-table thead th {
+  text-align: left;
+  padding: 12px 16px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(232, 234, 240, 0.4);
+  border-bottom: 1px solid #1e2130;
+}
+.risk-table tbody td {
+  padding: 16px;
+  border-bottom: 1px solid rgba(30, 33, 48, 0.5);
+  font-size: 14px;
+}
+.risk-table tbody tr:hover {
+  background: #1a1d28;
+}
+.risk-table .col-score,
+.risk-table .col-trend,
+.risk-table .col-prob {
+  text-align: center;
+}
+.risk-table .col-loss {
+  text-align: right;
+}
+
+/* ---- Health bar ---- */
+.health-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: #12141c;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.health-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 1s ease;
+}
+
+/* ---- Print ---- */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; color: black; }
+  .glass-card { border: 1px solid #ddd; background: white; }
+}
