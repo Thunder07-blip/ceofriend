@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn, signOut, useSession } from "next-auth/react";
 import {
   Shield,
   TrendingUp,
@@ -66,6 +67,7 @@ export default function LandingPage() {
   const [company, setCompany] = useState<CompanyContext>({ ...DEFAULT_COMPANY });
   const [hasCompanyContext, setHasCompanyContext] = useState(false);
   const router = useRouter();
+  const { data: session } = useSession();
 
   const handleAnalyze = () => {
     if (!repoUrl.trim()) {
@@ -160,9 +162,15 @@ export default function LandingPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 24, fontSize: 14, color: "rgba(232,234,240,0.5)" }}>
             <a href="#features" style={{ textDecoration: "none", color: "inherit" }}>Features</a>
             <a href="#how-it-works" style={{ textDecoration: "none", color: "inherit" }}>How It Works</a>
-            <a href="https://github.com" target="_blank" rel="noopener" style={{ display: "flex", alignItems: "center", gap: 4, textDecoration: "none", color: "inherit" }}>
-              <GitFork style={{ width: 16, height: 16 }} /> GitHub
-            </a>
+            {session ? (
+              <button onClick={() => signOut()} style={{ background: "transparent", border: "1px solid rgba(232,234,240,0.2)", borderRadius: 8, padding: "6px 12px", color: "white", cursor: "pointer" }}>
+                Logout
+              </button>
+            ) : (
+              <button onClick={() => signIn("github")} style={{ background: "transparent", border: "1px solid rgba(232,234,240,0.2)", borderRadius: 8, padding: "6px 12px", color: "white", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                <GitFork style={{ width: 14, height: 14 }} /> Login
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -191,57 +199,85 @@ export default function LandingPage() {
 
             {/* Repo Input */}
             <div style={{ maxWidth: 560, margin: "0 auto" }}>
-              <div style={{ display: "flex", gap: 12 }}>
-                <div style={{ flex: 1, position: "relative" }}>
-                  <GitFork style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", width: 20, height: 20, color: "rgba(232,234,240,0.25)" }} />
-                  <input
-                    id="repo-url-input"
-                    type="url"
-                    placeholder="https://github.com/owner/repo"
-                    value={repoUrl}
-                    onChange={(e) => { setRepoUrl(e.target.value); setError(""); }}
-                    onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+              {!session ? (
+                <div style={{ textAlign: "center", padding: "32px", border: "1px solid #1e2130", borderRadius: 16, background: "rgba(99, 102, 241, 0.05)" }}>
+                  <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Authentication Required</h3>
+                  <p style={{ fontSize: 14, color: "rgba(232,234,240,0.5)", marginBottom: 24 }}>You must authenticate with GitHub to create PRs and view private repositories.</p>
+                  <button
+                    onClick={() => signIn("github")}
+                    className="animate-pulse-glow"
                     style={{
-                      width: "100%",
-                      paddingLeft: 48,
-                      paddingRight: 16,
-                      paddingTop: 16,
-                      paddingBottom: 16,
+                      padding: "16px 32px",
                       borderRadius: 12,
-                      border: "1px solid #1e2130",
-                      background: "#12141c",
-                      color: "#e8eaf0",
+                      fontWeight: 600,
+                      color: "white",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      border: "none",
+                      cursor: "pointer",
+                      background: "linear-gradient(135deg, #10b981, #059669)",
                       fontSize: 15,
-                      outline: "none",
                     }}
-                  />
+                  >
+                    <GitFork style={{ width: 18, height: 18 }} /> Login with GitHub
+                  </button>
                 </div>
-                <button
-                  id="analyze-button"
-                  onClick={handleAnalyze}
-                  className="animate-pulse-glow"
-                  style={{
-                    padding: "16px 32px",
-                    borderRadius: 12,
-                    fontWeight: 600,
-                    color: "white",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    border: "none",
-                    cursor: "pointer",
-                    background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                    fontSize: 15,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Analyze <ChevronRight style={{ width: 16, height: 16 }} />
-                </button>
-              </div>
-              {error && (
-                <p style={{ color: "#ef4444", fontSize: 13, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>
-                  <AlertTriangle style={{ width: 12, height: 12 }} /> {error}
-                </p>
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <div style={{ flex: 1, position: "relative" }}>
+                      <GitFork style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", width: 20, height: 20, color: "rgba(232,234,240,0.25)" }} />
+                      <input
+                        id="repo-url-input"
+                        type="url"
+                        placeholder="https://github.com/owner/repo"
+                        value={repoUrl}
+                        onChange={(e) => { setRepoUrl(e.target.value); setError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                        style={{
+                          width: "100%",
+                          paddingLeft: 48,
+                          paddingRight: 16,
+                          paddingTop: 16,
+                          paddingBottom: 16,
+                          borderRadius: 12,
+                          border: "1px solid #1e2130",
+                          background: "#12141c",
+                          color: "#e8eaf0",
+                          fontSize: 15,
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+                    <button
+                      id="analyze-button"
+                      onClick={handleAnalyze}
+                      className="animate-pulse-glow"
+                      style={{
+                        padding: "16px 32px",
+                        borderRadius: 12,
+                        fontWeight: 600,
+                        color: "white",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        border: "none",
+                        cursor: "pointer",
+                        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                        fontSize: 15,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Analyze <ChevronRight style={{ width: 16, height: 16 }} />
+                    </button>
+                  </div>
+                  {error && (
+                    <p style={{ color: "#ef4444", fontSize: 13, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>
+                      <AlertTriangle style={{ width: 12, height: 12 }} /> {error}
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

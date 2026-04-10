@@ -6,6 +6,8 @@
 import { NextRequest } from "next/server";
 import { fetchFileContent } from "@/services/githubService";
 import { healFile } from "@/modules/healerAgent";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export const maxDuration = 60;
 
@@ -20,8 +22,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check auth to fetch file content on user's behalf if available
+    const session = await getServerSession(authOptions);
+    // @ts-expect-error - accessToken is populated in nextauth callback
+    const token = session?.accessToken as string | undefined;
+
     // 1. Fetch file content from GitHub
-    const fileData = await fetchFileContent(owner, repo, filePath);
+    const fileData = await fetchFileContent(owner, repo, filePath, token);
     if (!fileData) {
       return Response.json(
         { success: false, error: `Could not fetch file: ${filePath}` },

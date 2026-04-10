@@ -10,13 +10,13 @@ const GITHUB_API = "https://api.github.com";
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
 
-function getHeaders(): Record<string, string> {
+function getHeaders(requestToken?: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github.v3+json",
     "User-Agent": "CEOfriend-Platform",
   };
 
-  const token = process.env.github_fine_grained;
+  const token = requestToken || process.env.github_fine_grained;
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
@@ -27,10 +27,10 @@ function getHeaders(): Record<string, string> {
 /**
  * Fetch with retry and error handling.
  */
-async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Response | null> {
+async function fetchWithRetry(url: string, retries = MAX_RETRIES, token?: string): Promise<Response | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(url, { headers: getHeaders() });
+      const res = await fetch(url, { headers: getHeaders(token) });
 
       // Rate limit handling
       if (res.status === 403) {
@@ -73,7 +73,7 @@ async function fetchPaginated<T>(url: string, maxPages = 3): Promise<T[]> {
 
   while (page <= maxPages) {
     const separator = url.includes("?") ? "&" : "?";
-    const res = await fetchWithRetry(`${url}${separator}per_page=100&page=${page}`);
+    const res = await fetchWithRetry(`${url}${separator}per_page=100&page=${page}`, MAX_RETRIES);
     if (!res) break;
 
     const data = (await res.json()) as T[];
@@ -302,16 +302,17 @@ export async function fetchRepoContents(
 export async function fetchFileContent(
   owner: string,
   repo: string,
-  filePath: string
+  path: string,
+  token?: string
 ): Promise<{ content: string; sha: string } | null> {
-  logger.step("GitHub", `Fetching file content: ${filePath}`);
-  const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${filePath}`;
-  const res = await fetchWithRetry(url);
+  logger.step("GitHub", `Fetching file content: ${path}`);
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${path}`;
+  const res = await fetchWithRetry(url, 3, token);
   if (!res) return null;
 
   const data = (await res.json()) as { content?: string; sha?: string };
   if (!data.content || !data.sha) {
-    logger.warn("GitHub", `No content returned for ${filePath}`);
+    logger.warn("GitHub", `No content returned for ${path}`);
     return null;
   }
 
@@ -329,16 +330,16 @@ export async function createBranchAndPR(
   filePath: string,
   patchedContent: string,
   fileSha: string,
-  bugType: string
+  bugType: string,
+  authToken: string
 ): Promise<{ prUrl: string; branchName: string }> {
-  const token = process.env.github_fine_grained;
-  if (!token) {
-    throw new Error("No GitHub token configured. Set github_fine_grained in .env");
+  if (!authToken) {
+    throw new Error("No authenticated GitHub token available. Please login via NextAuth.");
   }
 
   const authHeaders = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${authToken}`,
     "User-Agent": "CEOfriend-Platform",
   };
 

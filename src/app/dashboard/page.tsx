@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import {
   Shield,
   AlertTriangle,
@@ -20,6 +21,7 @@ import {
 import type { PipelineResult } from "@/lib/types";
 
 export default function DashboardPage() {
+  const { data: session } = useSession();
   const [data, setData] = useState<PipelineResult | null>(null);
   
   // New States for Scenario Agent
@@ -144,6 +146,26 @@ export default function DashboardPage() {
             >
               <Wrench style={{ width: 14, height: 14 }} /> Heal Repo
             </button>
+            {session && (
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  border: "1px solid rgba(232,234,240,0.2)",
+                  cursor: "pointer",
+                  background: "transparent",
+                }}
+              >
+                Logout
+              </button>
+            )}
           </div>
         </div>
       </nav>

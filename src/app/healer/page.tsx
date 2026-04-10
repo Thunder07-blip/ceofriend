@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import {
   Shield,
   Wrench,
@@ -52,6 +53,7 @@ interface FileEntry {
 }
 
 export default function HealerPage() {
+  const { data: session } = useSession();
   const [data, setData] = useState<PipelineResult | null>(null);
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [healAllLoading, setHealAllLoading] = useState(false);
@@ -198,6 +200,26 @@ export default function HealerPage() {
             >
               <ArrowLeft style={{ width: 14, height: 14 }} /> Dashboard
             </button>
+            {session && (
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  border: "1px solid rgba(232,234,240,0.2)",
+                  cursor: "pointer",
+                  background: "transparent",
+                }}
+              >
+                Logout
+              </button>
+            )}
           </div>
         </div>
       </nav>
