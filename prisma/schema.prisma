@@ -1,0 +1,160 @@
+// ============================================================
+// CEOfriend — Prisma Schema (PostgreSQL + Neon.tech)
+// Incorporates: db_model.md + chat-gpt_report.md improvements
+// ============================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── NextAuth Models ──────────────────────────────────
+
+model User {
+  id          String   @id @default(cuid())
+  githubId    String   @unique
+  name        String?
+  email       String?
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  lastLoginAt DateTime @default(now())
+
+  accounts     Account[]
+  repositories Repository[]
+  analyses     Analysis[]
+  healerPRs    HealerPR[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  tokenType         String?
+  scope             String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// ── Repository (ChatGPT improvement #1) ──────────────
+
+model Repository {
+  id             String    @id @default(cuid())
+  userId         String
+  owner          String
+  name           String
+  fullName       String    @unique
+  isPrivate      Boolean   @default(false)
+  currentHealth  Float?    // Cached latest health score
+  currentRisk    Float?    // Cached latest risk exposure
+  lastAnalyzedAt DateTime? // When last analysis was run
+  createdAt      DateTime  @default(now())
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses  Analysis[]
+  healerPRs HealerPR[]
+
+  @@index([userId])
+  @@index([owner, name])
+}
+
+// ── Core Domain Models ───────────────────────────────
+
+model Analysis {
+  id                String   @id @default(cuid())
+  userId            String
+  repositoryId      String
+  repoUrl           String
+  status            String   @default("completed") // pending | analyzing | completed | failed
+  repoHealth        Int
+  totalBugs         Int
+  totalContributors Int
+  analyzedFiles     Int
+  totalRiskExposure Float
+  previousRisk      Float?   // Risk delta tracking (judge-winning)
+  riskChange        Float?   // Change from previous analysis
+  reportSummary     String
+  reportJson        Json     // Full Report object
+  companyContext    Json?    // Optional CompanyContext
+  analyzedAt        DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  fileRisks  FileRisk[]
+  scenarios  Scenario[]
+  healerPRs  HealerPR[]
+
+  @@index([userId])
+  @@index([repositoryId])
+  @@index([analyzedAt])
+}
+
+model FileRisk {
+  id                 String   @id @default(cuid())
+  analysisId         String
+  filePath           String
+  riskScore          Int
+  healthScore        Int
+  failureProbability Float
+  predictedRisk      Int
+  expectedLoss       Float
+  businessFunction   String
+  riskTrend          String
+  breakdown          Json     // RiskBreakdown object
+  reasons            Json     // Array of reason strings
+  createdAt          DateTime @default(now())
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+  @@index([analysisId, riskScore])
+}
+
+model Scenario {
+  id            String   @id @default(cuid())
+  analysisId    String
+  question      String
+  scenarioType  String
+  oldLoss       Float
+  newLoss       Float
+  changePercent Float
+  explanation   String
+  simulatedAt   DateTime @default(now())
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@index([analysisId])
+}
+
+model HealerPR {
+  id              String   @id @default(cuid())
+  userId          String
+  repositoryId    String
+  analysisId      String?
+  filePath        String
+  bugType         String
+  bugReason       String
+  branchName      String
+  prUrl           String
+  status          String   @default("opened") // opened | merged | closed
+  impactReduction Float?   // "This PR reduced risk by X%" (judge-winning)
+  originalCode    String
+  patchedCode     String
+  diffText        String
+  createdAt       DateTime @default(now())
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository  @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  analysis   Analysis?   @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([repositoryId])
+  @@index([status])
+}
