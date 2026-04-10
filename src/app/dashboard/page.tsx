@@ -20,7 +20,54 @@ import type { PipelineResult } from "@/lib/types";
 
 export default function DashboardPage() {
   const [data, setData] = useState<PipelineResult | null>(null);
+  
+  // New States for Scenario Agent
+  const [scenarioInput, setScenarioInput] = useState("");
+  const [scenarioLoading, setScenarioLoading] = useState(false);
+  const [scenarioResult, setScenarioResult] = useState<{
+    oldLoss: number;
+    newLoss: number;
+    change: number;
+    changePercent: number;
+    explanation: string;
+  } | null>(null);
+
   const router = useRouter();
+
+  const handleScenarioSubmit = async () => {
+    if (!scenarioInput.trim() || !data?.impactData?.files[0]) return;
+    setScenarioLoading(true);
+    setScenarioResult(null);
+
+    const topFile = data.impactData.files[0];
+    const baseMetrics = {
+      failureProbability: topFile.failureProbability,
+      impactPerHour: topFile.impactPerHour,
+      expectedDowntime: topFile.expectedDowntime,
+      userImpactFactor: topFile.userImpactFactor,
+      failureFrequency: topFile.failureFrequency,
+      expectedLoss: topFile.expectedLoss,
+    };
+
+    try {
+      const res = await fetch("/api/scenario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: scenarioInput, baseMetrics }),
+      });
+      const resData = await res.json();
+      if (resData.success) {
+        setScenarioResult(resData.data);
+      } else {
+        alert(resData.error || "Failed to simulate scenario");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error simulating scenario");
+    } finally {
+      setScenarioLoading(false);
+    }
+  };
 
   useEffect(() => {
     const stored = sessionStorage.getItem("ceofriend_result");
@@ -174,6 +221,82 @@ export default function DashboardPage() {
               {" "}This component handles <span style={{ color: "#6366f1" }}>{data.impactData.files[0].businessFunction}</span> and has a{" "}
               <span style={{ color: "#f97316" }}>{(data.impactData.files[0].failureProbability * 100).toFixed(0)}%</span> failure probability.
             </p>
+          </div>
+        )}
+        {/* Scenario Agent Box */}
+        {data.impactData && data.impactData.files.length > 0 && (
+          <div className="glass-card animate-slide-up" style={{ padding: 24, marginBottom: 32, borderColor: "rgba(99,102,241,0.3)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+              <ShieldAlert style={{ width: 20, height: 20, color: "#6366f1" }} />
+              <span style={{ fontWeight: 600, fontSize: 16, color: "#e8eaf0" }}>Scenario Agent ("What if...")</span>
+            </div>
+            
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              <input 
+                type="text" 
+                placeholder="e.g. What if I don't fix payment service for 2 months?" 
+                value={scenarioInput}
+                onChange={(e) => setScenarioInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleScenarioSubmit()}
+                style={{
+                  flex: 1,
+                  padding: "12px 16px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(232,234,240,0.1)",
+                  background: "rgba(30,33,48,0.5)",
+                  color: "#fff",
+                  fontSize: 14,
+                  outline: "none"
+                }}
+              />
+              <button 
+                onClick={handleScenarioSubmit}
+                disabled={scenarioLoading || !scenarioInput.trim()}
+                style={{
+                  padding: "12px 24px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: scenarioLoading || !scenarioInput.trim() ? "rgba(99,102,241,0.5)" : "#6366f1",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: scenarioLoading || !scenarioInput.trim() ? "not-allowed" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
+                }}
+              >
+                {scenarioLoading ? "Simulating..." : "Simulate"}
+              </button>
+            </div>
+
+            {scenarioResult && (
+              <div style={{ marginTop: 24, padding: 20, background: "rgba(10,12,18,0.3)", borderRadius: 12, border: "1px dashed rgba(232,234,240,0.1)" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 32, marginBottom: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(232,234,240,0.4)" }}>Old Expected Loss</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "rgba(232,234,240,0.7)" }}>₹{scenarioResult.oldLoss.toLocaleString("en-IN")}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(232,234,240,0.4)" }}>New Expected Loss</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: scenarioResult.newLoss > scenarioResult.oldLoss ? "#ef4444" : "#10b981" }}>
+                      ₹{scenarioResult.newLoss.toLocaleString("en-IN")}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "rgba(232,234,240,0.4)" }}>Change</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: scenarioResult.changePercent > 0 ? "#ef4444" : "#22c55e" }}>
+                      {scenarioResult.changePercent > 0 ? "+" : ""}{scenarioResult.changePercent}%
+                    </div>
+                  </div>
+                </div>
+                <div style={{ background: "rgba(99,102,241,0.1)", padding: "16px 20px", borderRadius: 8, borderLeft: "4px solid #6366f1" }}>
+                  <p style={{ margin: 0, fontSize: 14, color: "rgba(232,234,240,0.85)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                    <strong style={{ color: "#fff", display: "block", marginBottom: 8 }}>CEO Summary: </strong>
+                    {scenarioResult.explanation}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
