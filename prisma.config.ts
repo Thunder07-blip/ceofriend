@@ -3,12 +3,21 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// Read the connection string from env
+let finalUrl = process.env["DATABASE_URL"] || "";
+
+// If it's a Neon DB and uses the proxy pooler, rewrite it to use the DIRECT
+// connection endpoint to bypass endless WebSocket and PgBouncer hangs on Windows
+if (finalUrl && finalUrl.includes("-pooler.c-5")) {
+  finalUrl = finalUrl.replace("-pooler.c-5", ".c-5");
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: finalUrl,
   },
 });

@@ -1,27 +1,41 @@
 // ============================================================
-// CEOfriend — Prisma Client Singleton (Prisma 7 + Neon)
-// Uses @prisma/adapter-neon with Pool to connect to Neon.tech
-// without requiring Prisma Accelerate.
+// CEOfriend — Prisma Client Singleton
+// Uses @prisma/adapter-pg to securely connect over standard TCP
+// bypassing Prisma 7's Edge requirements and Neon websocket hangs.
 // ============================================================
 
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { PrismaNeon } from "@prisma/adapter-neon";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
-import ws from "ws";
-
-neonConfig.webSocketConstructor = ws;
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 function createPrismaClient(): PrismaClient {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
-  // Type assertion handles slight type mismatches between 
-  // @neondatabase/serverless versions.
-  const adapter = new PrismaNeon(pool as any);
+  let connectionString = process.env.DATABASE_URL || "";
+  
+  if (!connectionString) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("DATABASE_URL is not defined in production environment.");
+    } else {
+      console.warn("DATABASE_URL is not defined during local Prisma instantiation.");
+    }
+  }
 
-  return new PrismaClient({ adapter } as never);
+  // Force PgBouncer compatibility for Prisma on Neon pooler URLs
+  if (connectionString && connectionString.includes("pooler") && !connectionString.includes("pgbouncer=true")) {
+    connectionString = connectionString + (connectionString.includes("?") ? "&" : "?") + "pgbouncer=true&connection_limit=1";
+  }
+
+  // Use native pg pool instead of neon web sockets
+  const pool = new Pool({ connectionString: connectionString || "postgresql://invalid" });
+  const adapter = new PrismaPg(pool);
+
+  return new PrismaClient({ 
+    adapter,
+    log: ["warn", "error"]
+  });
 }
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
