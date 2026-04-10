@@ -12,8 +12,53 @@ import { riskAgent } from "@/modules/riskAgent";
 import { predictionAgentEnriched } from "@/modules/predictionAgent";
 import { impactAgent } from "@/modules/impactAgent";
 import { reportAgent } from "@/modules/reportAgent";
+import fs from "fs";
+import path from "path";
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Append the final pipeline result to a persistent CSV log.
+ */
+function appendScoringLog(repoUrl: string, result: PipelineResult) {
+  try {
+    const logFilePath = path.join(process.cwd(), "scoring-logs.csv");
+    const isNewFile = !fs.existsSync(logFilePath);
+
+    // CSV Headers
+    if (isNewFile) {
+      fs.writeFileSync(
+        logFilePath,
+        "Timestamp,Repository,File Name,Risk Score,Failure Probability,Expected Loss (INR)\n"
+      );
+    }
+
+    const timestamp = result.analyzedAt;
+    const repo = repoUrl;
+
+    if (result.impactData?.files) {
+      let csvData = "";
+      for (const fileImpact of result.impactData.files) {
+        const fileName = fileImpact.file;
+        const riskScore = fileImpact.predictedRisk;
+        const failProb = (fileImpact.failureProbability * 100).toFixed(2) + "%";
+        const expectedLoss = fileImpact.expectedLoss;
+
+        csvData += `"${timestamp}","${repo}","${fileName}","${riskScore}","${failProb}","${expectedLoss}"\n`;
+      }
+      if (csvData) {
+        fs.appendFileSync(logFilePath, csvData);
+        logger.step("Orchestrator", `Stored ${result.impactData.files.length} file components to ${logFilePath}`);
+      }
+    } else {
+      // If no files could be scored (e.g. rate limit), just log a single error row
+      const errorMsg = result.errors.map(e => e.message).join(" | ");
+      fs.appendFileSync(logFilePath, `"${timestamp}","${repo}","[NO FILES]","N/A","N/A","ERROR: ${errorMsg}"\n`);
+    }
+  } catch (err) {
+    logger.error("Orchestrator", "Failed to write scoring log CSV", err);
+  }
+}
 
 /**
  * Run the full analysis pipeline.
@@ -118,7 +163,7 @@ export async function orchestrate(repoUrl: string, companyContext?: CompanyConte
     `Pipeline ${success ? "completed successfully" : "completed with errors"} in ${elapsed}ms. Errors: ${errors.length}`
   );
 
-  return {
+  const pipelineResult: PipelineResult = {
     success,
     repoData,
     riskData,
@@ -129,4 +174,9 @@ export async function orchestrate(repoUrl: string, companyContext?: CompanyConte
     errors,
     analyzedAt: new Date().toISOString(),
   };
+
+  // Natively log the entire execution scoring to CSV
+  appendScoringLog(repoUrl, pipelineResult);
+
+  return pipelineResult;
 }

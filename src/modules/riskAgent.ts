@@ -132,9 +132,20 @@ export function calculateFileRisk(file: {
     breakdown.uncertainty * WEIGHTS.uncertainty;
 
   // FIX 4: Add File Differentiation
-  const importance = file.file.toLowerCase().includes("payment") ? 1.5 
-    : file.file.toLowerCase().includes("auth") ? 1.2 
-    : 1;
+  let importance = 1;
+  const lowerFile = file.file.toLowerCase();
+
+  // Business logic priority
+  if (lowerFile.includes("payment")) importance = 1.5;
+  else if (lowerFile.includes("auth") || lowerFile.includes("security")) importance = 1.2;
+  
+  // Extension & File Type differentiation for baseline variance
+  else if (lowerFile.endsWith(".sol")) importance = 1.3; // Smart contracts are inherently riskier natively
+  else if (lowerFile.endsWith(".jsx") || lowerFile.endsWith(".tsx")) importance = 1.1;
+  else if (lowerFile.endsWith(".js") || lowerFile.endsWith(".ts") || lowerFile.endsWith(".py")) importance = 1.05;
+  
+  // Configs are less risky structurally
+  else if (lowerFile.includes("config") || lowerFile.endsWith(".json") || lowerFile.endsWith(".gitignore") || lowerFile.endsWith(".md")) importance = 0.8;
 
   const riskScore = Math.round(baseRisk * importance);
 
