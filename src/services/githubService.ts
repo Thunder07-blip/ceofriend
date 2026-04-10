@@ -1,5 +1,5 @@
 // ============================================================
-// CEOfriend — GitHub Service
+// CEOfriend â€” GitHub Service
 // Fetches commits, issues, contributors from GitHub REST API
 // Graceful error handling: retries, partial data, rate limit awareness
 // ============================================================
@@ -292,4 +292,127 @@ export async function fetchRepoContents(
   logger.step("GitHub", `Found ${files.length} files, ${testPaths.size} test files`);
 
   return { files, testPaths };
+}
+
+// ---- Healer Agent: File Content + PR Creation ----
+
+/**
+ * Fetch the raw content of a single file from GitHub.
+ */
+export async function fetchFileContent(
+  owner: string,
+  repo: string,
+  filePath: string
+): Promise<{ content: string; sha: string } | null> {
+  logger.step("GitHub", `Fetching file content: ${filePath}`);
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${filePath}`;
+  const res = await fetchWithRetry(url);
+  if (!res) return null;
+
+  const data = (await res.json()) as { content?: string; sha?: string };
+  if (!data.content || !data.sha) {
+    logger.warn("GitHub", `No content returned for ${filePath}`);
+    return null;
+  }
+
+  const decoded = Buffer.from(data.content, "base64").toString("utf-8");
+  return { content: decoded, sha: data.sha };
+}
+
+/**
+ * Create a new branch, commit patched file, and open a Pull Request.
+ * Throws on failure with the actual GitHub API error message.
+ */
+export async function createBranchAndPR(
+  owner: string,
+  repo: string,
+  filePath: string,
+  patchedContent: string,
+  fileSha: string,
+  bugType: string
+): Promise<{ prUrl: string; branchName: string }> {
+  const token = process.env.github_fine_grained;
+  if (!token) {
+    throw new Error("No GitHub token configured. Set github_fine_grained in .env");
+  }
+
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+    "User-Agent": "CEOfriend-Platform",
+  };
+
+  const timestamp = Math.floor(Date.now() / 1000);
+  const safeFile = filePath.split("/").pop()?.replace(/\.[^.]+$/, "") || "file";
+  const safeBug = bugType.replace(/[^a-z0-9]/gi, "-").toLowerCase();
+  const branchName = `ai-fix/${safeFile}-${safeBug}-${timestamp}`;
+
+  // 1. Get default branch
+  logger.step("GitHub", "Getting default branch ref...");
+  const repoRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}`, { headers: authHeaders });
+  if (!repoRes.ok) {
+    const body = await repoRes.text();
+    throw new Error(`Repo info failed (${repoRes.status}): ${body}`);
+  }
+  const repoInfo = (await repoRes.json()) as { default_branch: string };
+  const defaultBranch = repoInfo.default_branch;
+
+  // 2. Get HEAD SHA
+  const refRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/git/ref/heads/${defaultBranch}`, { headers: authHeaders });
+  if (!refRes.ok) {
+    const body = await refRes.text();
+    throw new Error(`Get ref failed (${refRes.status}): ${body}`);
+  }
+  const refData = (await refRes.json()) as { object: { sha: string } };
+  const baseSha = refData.object.sha;
+
+  // 3. Create branch
+  logger.step("GitHub", `Creating branch: ${branchName}`);
+  const branchRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/git/refs`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseSha }),
+  });
+  if (!branchRes.ok) {
+    const body = await branchRes.text();
+    throw new Error(`Create branch failed (${branchRes.status}): ${body}`);
+  }
+
+  // 4. Commit patched file
+  logger.step("GitHub", "Committing patched file...");
+  const commitRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/contents/${filePath}`, {
+    method: "PUT",
+    headers: authHeaders,
+    body: JSON.stringify({
+      message: `fix: ${bugType} in ${filePath}\n\nDetected and fixed by CEOfriend AI Repo Healer.`,
+      content: Buffer.from(patchedContent, "utf-8").toString("base64"),
+      sha: fileSha,
+      branch: branchName,
+    }),
+  });
+  if (!commitRes.ok) {
+    const body = await commitRes.text();
+    throw new Error(`Commit failed (${commitRes.status}): ${body}`);
+  }
+
+  // 5. Open PR
+  logger.step("GitHub", "Opening Pull Request...");
+  const prRes = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/pulls`, {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({
+      title: `Fix: ${bugType} in ${filePath}`,
+      head: branchName,
+      base: defaultBranch,
+      body: `## AI Repo Healer\n\n- **Detected by:** CEOfriend AI Repo Healer\n- **Issue:** ${bugType}\n- **Fix:** Minimal safe patch applied\n- **File:** ${filePath}\n\n> No structural changes were made.`,
+    }),
+  });
+  if (!prRes.ok) {
+    const body = await prRes.text();
+    throw new Error(`Create PR failed (${prRes.status}): ${body}`);
+  }
+
+  const prData = (await prRes.json()) as { html_url: string };
+  logger.step("GitHub", `PR created: ${prData.html_url}`);
+  return { prUrl: prData.html_url, branchName };
 }

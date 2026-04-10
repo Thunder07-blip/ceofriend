@@ -15,6 +15,7 @@ import {
   Minus,
   FileSearch,
   ShieldAlert,
+  Wrench,
 } from "lucide-react";
 import type { PipelineResult } from "@/lib/types";
 
@@ -123,6 +124,25 @@ export default function DashboardPage() {
               }}
             >
               <FileText style={{ width: 14, height: 14 }} /> CEO Report
+            </button>
+            <button
+              id="heal-repo-btn"
+              onClick={() => router.push("/healer")}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                border: "none",
+                cursor: "pointer",
+                background: "linear-gradient(135deg, #10b981, #059669)",
+              }}
+            >
+              <Wrench style={{ width: 14, height: 14 }} /> Heal Repo
             </button>
           </div>
         </div>
@@ -357,7 +377,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Bottom CTA */}
-        <div style={{ marginTop: 40, textAlign: "center" }}>
+        <div style={{ marginTop: 40, textAlign: "center", display: "flex", justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
           <button
             onClick={() => router.push("/report")}
             style={{
@@ -375,6 +395,24 @@ export default function DashboardPage() {
             }}
           >
             View Full CEO Report <ArrowRight style={{ width: 16, height: 16 }} />
+          </button>
+          <button
+            onClick={() => router.push("/healer")}
+            style={{
+              padding: "14px 32px",
+              borderRadius: 12,
+              fontWeight: 600,
+              color: "white",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              border: "none",
+              cursor: "pointer",
+              background: "linear-gradient(135deg, #10b981, #059669)",
+              fontSize: 15,
+            }}
+          >
+            <Wrench style={{ width: 16, height: 16 }} /> Heal Repo
           </button>
         </div>
       </div>
