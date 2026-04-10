@@ -92,7 +92,7 @@ interface GHCommit {
   sha: string;
   commit: {
     message: string;
-    author: { date: string };
+    author: { date: string; name?: string };
   };
   files?: { filename: string }[];
 }
@@ -114,65 +114,59 @@ interface GHContent {
   name: string;
   path: string;
   type: string;
+  size?: number;
 }
 
 // ---- Public API ----
 
 /**
- * Fetch recent commits with file-level detail.
- * Limits to last 30 days worth of commits.
+ * Fetch exact commit statistics for a specific file.
+ * We fetch 1 page (up to 100 commits) which is mathematically plenty for our model.
  */
-export async function fetchCommits(
+export async function fetchFileStats(
   owner: string,
-  repo: string
+  repo: string,
+  path: string
 ): Promise<{
-  commitsByFile: Map<string, number>;
-  recentCommitsByFile: Map<string, number>;
-  totalCommits: number;
+  commits: number;
+  recentCommits: number;
+  contributors: number;
 }> {
-  logger.step("GitHub", `Fetching commits for ${owner}/${repo}`);
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/commits?path=${path}&per_page=100`;
+  const res = await fetchWithRetry(url);
+
+  if (!res) {
+    return { commits: 0, recentCommits: 0, contributors: 1 }; // Safe fallback
+  }
+
+  const commitsArray = (await res.json()) as GHCommit[];
+  if (!Array.isArray(commitsArray) || commitsArray.length === 0) {
+    return { commits: 0, recentCommits: 0, contributors: 1 };
+  }
 
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
 
-  const url = `${GITHUB_API}/repos/${owner}/${repo}/commits?since=${sixtyDaysAgo.toISOString()}`;
-  const commits = await fetchPaginated<GHCommit>(url, 3);
+  let recentCommits = 0;
+  const uniqueAuthors = new Set<string>();
 
-  const commitsByFile = new Map<string, number>();
-  const recentCommitsByFile = new Map<string, number>();
-
-  // For detailed file info, fetch individual commits (limit to first 30)
-  const detailedCommits = commits.slice(0, 30);
-
-  for (const commit of detailedCommits) {
-    const detailRes = await fetchWithRetry(
-      `${GITHUB_API}/repos/${owner}/${repo}/commits/${commit.sha}`
-    );
-
-    if (!detailRes) continue;
-
-    const detail = (await detailRes.json()) as GHCommit;
-    const commitDate = new Date(detail.commit.author.date);
-    const isRecent = commitDate >= thirtyDaysAgo;
-
-    if (detail.files) {
-      for (const file of detail.files) {
-        const name = file.filename;
-        commitsByFile.set(name, (commitsByFile.get(name) || 0) + 1);
-        if (isRecent) {
-          recentCommitsByFile.set(name, (recentCommitsByFile.get(name) || 0) + 1);
-        }
+  for (const c of commitsArray) {
+    if (c.commit?.author?.date) {
+      if (new Date(c.commit.author.date) >= thirtyDaysAgo) {
+        recentCommits++;
       }
     }
+    
+    // Add author login (or generic name if login missing) to count unique contributors
+    // Actual API has c.author?.login, but we fallback to commit author name
+    const authorId = (c as any).author?.login || c.commit?.author?.name || "unknown";
+    uniqueAuthors.add(authorId as string);
   }
 
-  logger.step("GitHub", `Found ${commits.length} commits, ${commitsByFile.size} unique files`);
-
   return {
-    commitsByFile,
-    recentCommitsByFile,
-    totalCommits: commits.length,
+    commits: commitsArray.length,
+    recentCommits,
+    contributors: Math.max(1, uniqueAuthors.size),
   };
 }
 
@@ -259,7 +253,7 @@ export async function fetchRepoContents(
   owner: string,
   repo: string
 ): Promise<{
-  files: string[];
+  files: { path: string; size: number }[];
   testPaths: Set<string>;
 }> {
   logger.step("GitHub", `Fetching file tree for ${owner}/${repo}`);
@@ -272,9 +266,9 @@ export async function fetchRepoContents(
   }
 
   const data = (await res.json()) as { tree: GHContent[] };
-  const files = (data.tree || [])
-    .filter((item) => item.type === "blob")
-    .map((item) => item.path);
+  const allFiles = (data.tree || []).filter((item) => item.type === "blob");
+  const files = allFiles.map((item) => ({ path: item.path, size: item.size || 0 }));
+  const pathsOnly = allFiles.map((item) => item.path);
 
   // Detect test files and test directories
   const testPatterns = [
@@ -286,7 +280,7 @@ export async function fetchRepoContents(
   ];
 
   const testPaths = new Set<string>();
-  for (const file of files) {
+  for (const file of pathsOnly) {
     for (const pattern of testPatterns) {
       if (pattern.test(file)) {
         testPaths.add(file);

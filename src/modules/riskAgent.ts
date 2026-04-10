@@ -7,29 +7,31 @@
 import type { RepoData, RiskData, FileRisk, RiskBreakdown } from "@/lib/types";
 import { clamp, safeDivide, logger } from "@/lib/utils";
 
-// Weights for each risk dimension (must sum to 1.0)
 const WEIGHTS = {
-  volatility: 0.3,
-  bugDensity: 0.4,
+  volatility: 0.25,
+  bugDensity: 0.35,
   ownership: 0.1,
-  testCoverage: 0.2,
+  testCoverage: 0.15,
+  uncertainty: 0.15,
 };
 
 /**
  * Calculate volatility score (0-100).
- * High recent commits = high volatility = higher risk.
+ * FIX 2: Add Volatility Floor to prevent zero collapse
  */
 function calcVolatility(recentCommits: number): number {
-  return clamp(recentCommits * 2, 0, 100);
+  return clamp(Math.max(10, recentCommits * 2), 0, 100);
 }
 
 /**
  * Calculate bug density score (0-100).
- * More bugs relative to commits = higher risk.
+ * FIX 3: Fix Bug Density to treat 0-bugs as uncertain baseline.
  */
 function calcBugDensity(bugs: number, commits: number): number {
-  const ratio = safeDivide(bugs, commits, 0);
-  return clamp(Math.round(ratio * 100), 0, 100);
+  const safeCommits = Math.max(1, commits);
+  return bugs === 0 
+    ? 10 
+    : clamp(Math.round((bugs / safeCommits) * 100), 0, 100);
 }
 
 /**
@@ -52,10 +54,26 @@ function calcTestCoverage(hasTests: boolean): number {
 }
 
 /**
+ * Calculate uncertainty risk (0-100).
+ * FIX 1: Absence of signal implies uncertainty, raising risk floors.
+ */
+function calculateUncertainty(file: { commits: number; recentCommits: number; bugs: number }): number {
+  let uncertainty = 0;
+  if (file.commits === 0) uncertainty += 30;
+  if (file.recentCommits === 0) uncertainty += 20;
+  if (file.bugs === 0) uncertainty += 10;
+  return clamp(uncertainty, 0, 100);
+}
+
+/**
  * Generate human-readable reasons for a risk score.
  */
-function generateReasons(breakdown: RiskBreakdown, hasTests: boolean, recentCommits: number, bugs: number): string[] {
+function generateReasons(breakdown: RiskBreakdown, hasTests: boolean, recentCommits: number, bugs: number, uncertainty: number): string[] {
   const reasons: string[] = [];
+
+  if (uncertainty >= 30) {
+    reasons.push("High unmeasured uncertainty (low tracked data)");
+  }
 
   if (breakdown.volatility >= 60) {
     reasons.push(`High change activity (${recentCommits} recent commits)`);
@@ -96,23 +114,46 @@ export function calculateFileRisk(file: {
   bugs: number;
   contributors: number;
   hasTests: boolean;
+  size?: number;
 }): FileRisk {
   const breakdown: RiskBreakdown = {
     volatility: calcVolatility(file.recentCommits),
     bugDensity: calcBugDensity(file.bugs, file.commits),
     ownership: calcOwnership(file.contributors),
     testCoverage: calcTestCoverage(file.hasTests),
+    uncertainty: calculateUncertainty(file),
   };
 
-  const riskScore = Math.round(
+  const baseRisk = 
     breakdown.volatility * WEIGHTS.volatility +
     breakdown.bugDensity * WEIGHTS.bugDensity +
     breakdown.ownership * WEIGHTS.ownership +
-    breakdown.testCoverage * WEIGHTS.testCoverage
-  );
+    breakdown.testCoverage * WEIGHTS.testCoverage +
+    breakdown.uncertainty * WEIGHTS.uncertainty;
+
+  // FIX 4: Add File Differentiation
+  const importance = file.file.toLowerCase().includes("payment") ? 1.5 
+    : file.file.toLowerCase().includes("auth") ? 1.2 
+    : 1;
+
+  const riskScore = Math.round(baseRisk * importance);
 
   const healthScore = clamp(100 - riskScore, 0, 100);
-  const reasons = generateReasons(breakdown, file.hasTests, file.recentCommits, file.bugs);
+  const reasons = generateReasons(breakdown, file.hasTests, file.recentCommits, file.bugs, breakdown.uncertainty);
+
+  // FIX 3: Debug test output as requested by user
+  console.log({
+    file: file.file,
+    commits: file.commits,
+    recentCommits: file.recentCommits,
+    bugs: file.bugs,
+    volatility: breakdown.volatility,
+    bugDensity: breakdown.bugDensity,
+    ownership: breakdown.ownership,
+    test: breakdown.testCoverage,
+    uncertainty: breakdown.uncertainty,
+    finalRisk: clamp(riskScore, 0, 100)
+  });
 
   return {
     file: file.file,

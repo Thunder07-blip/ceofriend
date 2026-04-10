@@ -7,10 +7,10 @@
 import type { RepoData, RepoFile } from "@/lib/types";
 import { parseRepoUrl, logger } from "@/lib/utils";
 import {
-  fetchCommits,
   fetchIssues,
   fetchContributors,
   fetchRepoContents,
+  fetchFileStats,
 } from "@/services/githubService";
 
 // Critical directories that always get included in analysis
@@ -93,31 +93,36 @@ function hasTestsForFile(filename: string, testPaths: Set<string>): boolean {
  * Strategy: top 20 by commits + bug-heavy + critical paths
  */
 function selectHotspots(
-  commitsByFile: Map<string, number>,
   bugsByFile: Map<string, number>,
-  allFiles: string[],
+  allFiles: { path: string; size: number }[],
   maxFiles: number = 20
 ): string[] {
   const scored = new Map<string, number>();
 
-  // Score by commits
-  for (const [file, count] of commitsByFile) {
-    if (shouldIgnoreFile(file)) continue;
-    scored.set(file, (scored.get(file) || 0) + count * 2);
-  }
-
-  // Score by bugs
+  // Score by bugs (Heavy weight)
   for (const [file, count] of bugsByFile) {
     if (shouldIgnoreFile(file)) continue;
     scored.set(file, (scored.get(file) || 0) + count * 5);
   }
 
-  // Boost critical paths
-  for (const file of allFiles) {
+  // Score by critical paths and file tree
+  for (const fileObj of allFiles) {
+    const file = fileObj.path;
     if (shouldIgnoreFile(file)) continue;
-    if (isCriticalPath(file)) {
-      scored.set(file, (scored.get(file) || 0) + 10);
+    
+    // Baseline score so non-bug files still have a chance
+    let score = scored.get(file) || 1; 
+
+    // FIX 5: Better hotspot ranking
+    if (file.toLowerCase().includes("payment")) {
+      score += 50;
+    } else if (file.toLowerCase().includes("auth")) {
+      score += 30;
+    } else if (isCriticalPath(file)) {
+      score += 10;
     }
+    
+    scored.set(file, score);
   }
 
   // Sort by score and take top N
@@ -143,17 +148,9 @@ export async function repoAgent(repoUrl: string): Promise<RepoData> {
 
   const { owner, repo } = parsed;
 
-  // Fetch all data in parallel for speed
-  const [commitResult, issueResult, contributorResult, contentResult] =
+  // Fetch global data in parallel
+  const [issueResult, contributorResult, contentResult] =
     await Promise.all([
-      fetchCommits(owner, repo).catch((err) => {
-        logger.error("RepoAgent", "Failed to fetch commits", err);
-        return {
-          commitsByFile: new Map<string, number>(),
-          recentCommitsByFile: new Map<string, number>(),
-          totalCommits: 0,
-        };
-      }),
       fetchIssues(owner, repo).catch((err) => {
         logger.error("RepoAgent", "Failed to fetch issues", err);
         return { bugsByFile: new Map<string, number>(), totalBugs: 0 };
@@ -164,55 +161,59 @@ export async function repoAgent(repoUrl: string): Promise<RepoData> {
       }),
       fetchRepoContents(owner, repo).catch((err) => {
         logger.error("RepoAgent", "Failed to fetch contents", err);
-        return { files: [] as string[], testPaths: new Set<string>() };
+        return { files: [] as { path: string; size: number }[], testPaths: new Set<string>() };
       }),
     ]);
 
-  // Select hotspot files
+  if (contentResult.files.length === 0) {
+    throw new Error("GitHub API Rate Limit exceeded or repository is empty. Please configure 'github_fine_grained' in your .env.local token to analyze more repositories.");
+  }
+
+  // Select hotspot files (prioritizing bugs and critical paths)
   const hotspots = selectHotspots(
-    commitResult.commitsByFile,
     issueResult.bugsByFile,
     contentResult.files
   );
 
-  // Build file data for each hotspot
-  const files: RepoFile[] = hotspots.map((filename) => {
-    const commits = commitResult.commitsByFile.get(filename) || 0;
-    const recentCommits = commitResult.recentCommitsByFile.get(filename) || 0;
+  // For each hotspot, explicitly fetch its real file stats to avoid dropping files with low global commit counts
+  logger.step("RepoAgent", `Fetching file-specific stats for ${hotspots.length} hotspots`);
+  
+  const hotspotStatsPromises = hotspots.map(async (filename) => {
+    const stats = await fetchFileStats(owner, repo, filename);
     const bugs = issueResult.bugsByFile.get(filename) || 0;
-
-    // Estimate contributors per file (approximate from global data)
-    const totalContribs = contributorResult.totalContributors;
-    const fileWeight = commits / Math.max(1, commitResult.totalCommits);
-    const fileContributors = Math.max(1, Math.round(totalContribs * fileWeight));
-
     const hasTests = hasTestsForFile(filename, contentResult.testPaths);
-
+    const fileObj = contentResult.files.find(f => f.path === filename);
+    
     return {
       file: filename,
-      commits,
-      recentCommits,
+      commits: Math.max(1, stats.commits),         // Minimum 1 commit to protect math
+      recentCommits: stats.recentCommits,
       bugs,
-      contributors: fileContributors,
+      contributors: stats.contributors,            // Actual file-level contributors
       hasTests,
+      size: fileObj?.size || 0,
     };
   });
 
-  // If no hotspots were found, create synthetic entries from file tree
-  if (files.length === 0 && contentResult.files.length > 0) {
-    logger.warn("RepoAgent", "No hotspots detected. Creating entries from file tree.");
-    const codeFiles = contentResult.files
-      .filter((f) => !shouldIgnoreFile(f))
-      .slice(0, 10);
+  const files: RepoFile[] = await Promise.all(hotspotStatsPromises);
 
-    for (const f of codeFiles) {
+  // If no hotspots were found, fetch some default ones from the tree (Edge case)
+  if (files.length === 0 && contentResult.files.length > 0) {
+    logger.warn("RepoAgent", "No hotspots detected. Creating fallback entries from file tree.");
+    const codeFiles = contentResult.files
+      .filter((f) => !shouldIgnoreFile(f.path))
+      .slice(0, 10);
+      
+    for (const fileObj of codeFiles) {
+      const filename = fileObj.path;
       files.push({
-        file: f,
+        file: filename,
         commits: 1,
         recentCommits: 0,
         bugs: 0,
         contributors: 1,
-        hasTests: hasTestsForFile(f, contentResult.testPaths),
+        hasTests: hasTestsForFile(filename, contentResult.testPaths),
+        size: fileObj.size,
       });
     }
   }
@@ -222,7 +223,7 @@ export async function repoAgent(repoUrl: string): Promise<RepoData> {
     owner,
     files,
     summary: {
-      totalCommits: commitResult.totalCommits,
+      totalCommits: 0, // Deprecated at global level, keeping for type compliance
       totalBugs: issueResult.totalBugs,
       totalContributors: contributorResult.totalContributors,
       analyzedFiles: files.length,

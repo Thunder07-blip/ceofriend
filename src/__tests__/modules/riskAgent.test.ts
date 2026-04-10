@@ -59,8 +59,10 @@ describe("Risk Scoring Agent", () => {
 
       expect(result.riskScore).toBeGreaterThanOrEqual(0);
       expect(result.riskScore).toBeLessThanOrEqual(100);
-      // bugDensity should be 0 (safeDivide)
-      expect(result.breakdown.bugDensity).toBe(0);
+      // bugDensity should be 10 (base uncertainty due to 0 bugs)
+      expect(result.breakdown.bugDensity).toBe(10);
+      // uncertainty should apply
+      expect(result.breakdown.uncertainty).toBe(60);
     });
 
     it("should cap risk score at 100", () => {

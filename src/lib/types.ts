@@ -12,6 +12,7 @@ export interface RepoFile {
   bugs: number;
   contributors: number;
   hasTests: boolean;
+  size?: number; // File size in bytes for complexity scoring
 }
 
 export interface RepoSummary {
@@ -35,6 +36,7 @@ export interface RiskBreakdown {
   bugDensity: number;
   ownership: number;
   testCoverage: number;
+  uncertainty: number;
 }
 
 export interface FileRisk {
@@ -88,6 +90,8 @@ export interface FileImpact {
   expectedDowntime: number;
   expectedLoss: number;
   userImpact: string;
+  userImpactFactor: number;
+  failureFrequency: number;
   priority: number;
   failureProbability: number;
   predictedRisk: number;

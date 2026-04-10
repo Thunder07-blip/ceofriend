@@ -78,19 +78,26 @@ export default function LandingPage() {
     }
     setError("");
 
-    // Store company context in sessionStorage so analysis page can send it
-    if (hasCompanyContext) {
-      sessionStorage.setItem("ceofriend_company", JSON.stringify(company));
-    } else {
-      sessionStorage.removeItem("ceofriend_company");
+    // If no context, open modal and stop
+    if (!hasCompanyContext) {
+      setShowModal(true);
+      setError("Please provide your business context above to accurately map financial impact.");
+      return;
     }
+
+    // Store company context in sessionStorage so analysis page can send it
+    sessionStorage.setItem("ceofriend_company", JSON.stringify(company));
 
     router.push(`/analysis?repo=${encodeURIComponent(repoUrl.trim())}`);
   };
 
   const handleSaveCompany = () => {
+    if (company.yearlyTurnover <= 0 || company.criticalSystems.length === 0) {
+      return; // Do not save if required fields are missing
+    }
     setHasCompanyContext(true);
     setShowModal(false);
+    setError(""); // Clear any "business context required" error
   };
 
   const handleClearCompany = () => {
@@ -264,7 +271,7 @@ export default function LandingPage() {
                     <Check style={{ width: 14, height: 14 }} /> Company Info Added
                   </>
                 ) : (
-                  "About Your Company (Optional)"
+                  "About Your Company (Required)"
                 )}
               </button>
             </div>
@@ -275,30 +282,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Preview Cards */}
-          <div className="metrics-grid animate-fade-in" style={{ maxWidth: 900, margin: "80px auto 0" }}>
-            <div className="glass-card" style={{ padding: 24 }}>
-              <div style={{ fontSize: "2.5rem", fontWeight: 900, color: "#ef4444", marginBottom: 4 }}>72<span style={{ fontSize: 16, color: "rgba(232,234,240,0.3)" }}>/100</span></div>
-              <p style={{ fontSize: 13, color: "rgba(232,234,240,0.4)", marginBottom: 4 }}>System Health Score</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#f97316" }}>
-                <AlertTriangle style={{ width: 12, height: 12 }} /> HIGH RISK
-              </div>
-            </div>
-            <div className="glass-card" style={{ padding: 24 }}>
-              <div style={{ fontSize: "2.5rem", fontWeight: 900, marginBottom: 4 }} className="gradient-text-money">₹6-10L</div>
-              <p style={{ fontSize: 13, color: "rgba(232,234,240,0.4)", marginBottom: 4 }}>Potential Loss (90 days)</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#f59e0b" }}>
-                <DollarSign style={{ width: 12, height: 12 }} /> Financial Exposure
-              </div>
-            </div>
-            <div className="glass-card" style={{ padding: 24 }}>
-              <div style={{ fontSize: "2.5rem", fontWeight: 900, color: "#6366f1", marginBottom: 4 }}>3</div>
-              <p style={{ fontSize: 13, color: "rgba(232,234,240,0.4)", marginBottom: 4 }}>Critical Components</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "#6366f1" }}>
-                <BarChart3 style={{ width: 12, height: 12 }} /> Needs Attention
-              </div>
-            </div>
-          </div>
+
         </div>
       </section>
 
@@ -464,7 +448,7 @@ export default function LandingPage() {
 
               {/* Yearly Turnover */}
               <div>
-                <label style={labelStyle}>Yearly Turnover (₹)</label>
+                <label style={labelStyle}>Yearly Turnover (₹) *</label>
                 <div style={{ position: "relative" }}>
                   <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(232,234,240,0.3)", fontSize: 14 }}>₹</span>
                   <input
@@ -516,7 +500,7 @@ export default function LandingPage() {
 
               {/* Critical Systems */}
               <div>
-                <label style={labelStyle}>Critical Business Systems</label>
+                <label style={labelStyle}>Critical Business Systems *</label>
                 <p style={{ fontSize: 11, color: "rgba(232,234,240,0.3)", marginBottom: 10 }}>Select systems that are critical to your revenue — these get higher priority in the analysis</p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {CRITICAL_SYSTEM_OPTIONS.map((system) => {
@@ -566,15 +550,16 @@ export default function LandingPage() {
               </button>
               <button
                 onClick={handleSaveCompany}
+                disabled={company.yearlyTurnover <= 0 || company.criticalSystems.length === 0}
                 style={{
                   padding: "10px 24px",
                   borderRadius: 10,
                   fontSize: 13,
                   fontWeight: 600,
                   border: "none",
-                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                  color: "white",
-                  cursor: "pointer",
+                  background: (company.yearlyTurnover <= 0 || company.criticalSystems.length === 0) ? "#1e2130" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  color: (company.yearlyTurnover <= 0 || company.criticalSystems.length === 0) ? "rgba(232,234,240,0.3)" : "white",
+                  cursor: (company.yearlyTurnover <= 0 || company.criticalSystems.length === 0) ? "not-allowed" : "pointer",
                   display: "flex",
                   alignItems: "center",
                   gap: 6,

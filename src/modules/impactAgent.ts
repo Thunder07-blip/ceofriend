@@ -144,6 +144,12 @@ const BUSINESS_MAPPINGS: Record<string, BusinessMapping> = {
     type: "low",
     userImpactDescription: "Reporting and analytics unavailability",
   },
+  analytics: {
+    function: "Business Intelligence",
+    impactPerHour: 15000,
+    type: "low",
+    userImpactDescription: "Analytics tracking unavailable",
+  },
   dashboard: {
     function: "Business Intelligence",
     impactPerHour: 15000,
@@ -202,12 +208,32 @@ export function getBusinessMapping(filename: string): BusinessMapping {
 }
 
 /**
+ * Get User Impact Factor (U_impact) based on semantic mapping.
+ * Payment: 0.9, Auth: 0.7, Search: 0.5, Analytics: 0.3, Default: 0.5
+ */
+function getUserImpactFactor(filename: string): number {
+  const lower = filename.toLowerCase();
+  if (lower.includes("payment") || lower.includes("checkout") || lower.includes("billing") || lower.includes("transaction") || lower.includes("cart")) return 0.9;
+  if (lower.includes("auth") || lower.includes("login") || lower.includes("user") || lower.includes("signup")) return 0.7;
+  if (lower.includes("search")) return 0.5;
+  if (lower.includes("analytics") || lower.includes("report") || lower.includes("dashboard")) return 0.3;
+  return 0.5; // Default for others
+}
+
+/**
  * Estimate expected downtime hours based on predicted risk.
  */
 function estimateDowntime(predictedRisk: number): number {
-  if (predictedRisk > 80) return 3;
-  if (predictedRisk > 50) return 2;
+  if (predictedRisk >= 80) return 3;
+  if (predictedRisk >= 50) return 2;
   return 1;
+}
+
+/**
+ * Calculate expected Failure Frequency (F_exp)
+ */
+function calculateFailureFrequency(predictedRisk: number): number {
+  return 1 + (predictedRisk / 50);
 }
 
 /**
@@ -256,9 +282,14 @@ export function calculateFileImpact(
 ): FileImpact {
   const mapping = getBusinessMapping(file.file);
   const downtime = estimateDowntime(file.predictedRisk);
+  const userImpactFactor = getUserImpactFactor(file.file);
+  const failureFrequency = calculateFailureFrequency(file.predictedRisk);
+  
   const scaledImpact = Math.round(mapping.impactPerHour * scale);
+  
+  // FINAL EQUATION: E_loss = P_fail * C_hour * T_down * U_impact * F_exp
   const expectedLoss = Math.round(
-    file.failureProbability * scaledImpact * downtime
+    file.failureProbability * scaledImpact * downtime * userImpactFactor * failureFrequency
   );
 
   return {
@@ -268,6 +299,8 @@ export function calculateFileImpact(
     expectedDowntime: downtime,
     expectedLoss,
     userImpact: mapping.userImpactDescription,
+    userImpactFactor,
+    failureFrequency,
     priority: 0, // Will be set after sorting
     failureProbability: file.failureProbability,
     predictedRisk: file.predictedRisk,
