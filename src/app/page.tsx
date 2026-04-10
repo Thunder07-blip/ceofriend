@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 import {
@@ -16,8 +16,16 @@ import {
   Building2,
   X,
   Check,
+  Search,
+  Lock,
+  Globe,
+  Star,
+  Loader2,
+  Eye,
 } from "lucide-react";
 import type { CompanyContext, IndustryType, TeamSize, DeployFrequency } from "@/lib/types";
+
+// ---- Constants ----
 
 const INDUSTRY_OPTIONS: { value: IndustryType; label: string }[] = [
   { value: "saas", label: "SaaS / Software" },
@@ -60,6 +68,48 @@ const DEFAULT_COMPANY: CompanyContext = {
   deployFrequency: "weekly",
 };
 
+// ---- Types ----
+
+interface GitHubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  description: string;
+  private: boolean;
+  stars: number;
+  language: string | null;
+  updated_at: string;
+  html_url: string;
+  default_branch: string;
+}
+
+type FilterType = "all" | "public" | "private";
+type RepoStatus = "idle" | "analyzing" | "done";
+
+// ---- Language Colors ----
+
+const LANG_COLORS: Record<string, string> = {
+  TypeScript: "#3178c6",
+  JavaScript: "#f1e05a",
+  Python: "#3572A5",
+  Java: "#b07219",
+  Go: "#00ADD8",
+  Rust: "#dea584",
+  Ruby: "#701516",
+  PHP: "#4F5D95",
+  "C++": "#f34b7d",
+  C: "#555555",
+  "C#": "#178600",
+  Swift: "#F05138",
+  Kotlin: "#A97BFF",
+  Dart: "#00B4AB",
+  HTML: "#e34c26",
+  CSS: "#563d7c",
+  Shell: "#89e051",
+  Vue: "#41b883",
+  Svelte: "#ff3e00",
+};
+
 export default function LandingPage() {
   const [repoUrl, setRepoUrl] = useState("");
   const [error, setError] = useState("");
@@ -69,6 +119,83 @@ export default function LandingPage() {
   const router = useRouter();
   const { data: session } = useSession();
 
+  // Repo list state
+  const [repos, setRepos] = useState<GitHubRepo[]>([]);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [reposError, setReposError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [analyzingRepo, setAnalyzingRepo] = useState<string | null>(null);
+  const [repoStatuses, setRepoStatuses] = useState<Record<string, RepoStatus>>({});
+
+  // Fetch repos when user logs in
+  useEffect(() => {
+    if (session) {
+      setReposLoading(true);
+      setReposError("");
+      fetch("/api/github/repos")
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setRepos(data);
+          } else {
+            setReposError(data.error || "Failed to fetch repos");
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch repos:", err);
+          setReposError("Failed to load repositories. Please try again.");
+        })
+        .finally(() => setReposLoading(false));
+    }
+  }, [session]);
+
+  // Filtered + searched repos
+  const filteredRepos = useMemo(() => {
+    let result = repos;
+
+    // Filter
+    if (filter === "public") result = result.filter((r) => !r.private);
+    if (filter === "private") result = result.filter((r) => r.private);
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (r) =>
+          r.name.toLowerCase().includes(q) ||
+          r.full_name.toLowerCase().includes(q) ||
+          (r.description && r.description.toLowerCase().includes(q)) ||
+          (r.language && r.language.toLowerCase().includes(q))
+      );
+    }
+
+    return result;
+  }, [repos, filter, searchQuery]);
+
+  // Analyze a repo from the list
+  const handleAnalyzeRepo = (repo: GitHubRepo) => {
+    if (!hasCompanyContext) {
+      setShowModal(true);
+      setError("Please provide your business context before analyzing.");
+      return;
+    }
+
+    setError("");
+    setAnalyzingRepo(repo.full_name);
+    setRepoStatuses((prev) => ({ ...prev, [repo.full_name]: "analyzing" }));
+
+    // Store company context
+    sessionStorage.setItem("ceofriend_company", JSON.stringify(company));
+
+    const repoFullUrl = `https://github.com/${repo.full_name}`;
+    router.push(`/analysis?repo=${encodeURIComponent(repoFullUrl)}`);
+  };
+
+  // Analyze via manual URL input
   const handleAnalyze = () => {
     if (!repoUrl.trim()) {
       setError("Please enter a repository URL");
@@ -80,26 +207,23 @@ export default function LandingPage() {
     }
     setError("");
 
-    // If no context, open modal and stop
     if (!hasCompanyContext) {
       setShowModal(true);
       setError("Please provide your business context above to accurately map financial impact.");
       return;
     }
 
-    // Store company context in sessionStorage so analysis page can send it
     sessionStorage.setItem("ceofriend_company", JSON.stringify(company));
-
     router.push(`/analysis?repo=${encodeURIComponent(repoUrl.trim())}`);
   };
 
   const handleSaveCompany = () => {
     if (company.yearlyTurnover <= 0 || company.criticalSystems.length === 0) {
-      return; // Do not save if required fields are missing
+      return;
     }
     setHasCompanyContext(true);
     setShowModal(false);
-    setError(""); // Clear any "business context required" error
+    setError("");
   };
 
   const handleClearCompany = () => {
@@ -115,6 +239,19 @@ export default function LandingPage() {
         ? prev.criticalSystems.filter((s) => s !== system)
         : [...prev.criticalSystems, system],
     }));
+  };
+
+  // Relative time formatter
+  const timeAgo = (dateStr: string) => {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `${months}mo ago`;
   };
 
   // ---- Inline styles ----
@@ -163,9 +300,19 @@ export default function LandingPage() {
             <a href="#features" style={{ textDecoration: "none", color: "inherit" }}>Features</a>
             <a href="#how-it-works" style={{ textDecoration: "none", color: "inherit" }}>How It Works</a>
             {session ? (
-              <button onClick={() => signOut()} style={{ background: "transparent", border: "1px solid rgba(232,234,240,0.2)", borderRadius: 8, padding: "6px 12px", color: "white", cursor: "pointer" }}>
-                Logout
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {session.user?.image && (
+                  <img
+                    src={session.user.image}
+                    alt="avatar"
+                    style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid #6366f1" }}
+                  />
+                )}
+                <span style={{ fontSize: 13, color: "rgba(232,234,240,0.7)" }}>{session.user?.name}</span>
+                <button onClick={() => signOut()} style={{ background: "transparent", border: "1px solid rgba(232,234,240,0.2)", borderRadius: 8, padding: "6px 12px", color: "white", cursor: "pointer" }}>
+                  Logout
+                </button>
+              </div>
             ) : (
               <button onClick={() => signIn("github")} style={{ background: "transparent", border: "1px solid rgba(232,234,240,0.2)", borderRadius: 8, padding: "6px 12px", color: "white", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                 <GitFork style={{ width: 14, height: 14 }} /> Login
@@ -197,12 +344,12 @@ export default function LandingPage() {
               and how much it will cost — in language a CEO understands.
             </p>
 
-            {/* Repo Input */}
-            <div style={{ maxWidth: 560, margin: "0 auto" }}>
+            {/* Auth Gate */}
+            <div style={{ maxWidth: 720, margin: "0 auto" }}>
               {!session ? (
                 <div style={{ textAlign: "center", padding: "32px", border: "1px solid #1e2130", borderRadius: 16, background: "rgba(99, 102, 241, 0.05)" }}>
                   <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 12 }}>Authentication Required</h3>
-                  <p style={{ fontSize: 14, color: "rgba(232,234,240,0.5)", marginBottom: 24 }}>You must authenticate with GitHub to create PRs and view private repositories.</p>
+                  <p style={{ fontSize: 14, color: "rgba(232,234,240,0.5)", marginBottom: 24 }}>Login with GitHub to view your repositories and start analyzing.</p>
                   <button
                     onClick={() => signIn("github")}
                     className="animate-pulse-glow"
@@ -225,53 +372,276 @@ export default function LandingPage() {
                 </div>
               ) : (
                 <>
-                  <div style={{ display: "flex", gap: 12 }}>
-                    <div style={{ flex: 1, position: "relative" }}>
-                      <GitFork style={{ position: "absolute", left: 16, top: "50%", transform: "translateY(-50%)", width: 20, height: 20, color: "rgba(232,234,240,0.25)" }} />
-                      <input
-                        id="repo-url-input"
-                        type="url"
-                        placeholder="https://github.com/owner/repo"
-                        value={repoUrl}
-                        onChange={(e) => { setRepoUrl(e.target.value); setError(""); }}
-                        onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
-                        style={{
-                          width: "100%",
-                          paddingLeft: 48,
-                          paddingRight: 16,
-                          paddingTop: 16,
-                          paddingBottom: 16,
-                          borderRadius: 12,
-                          border: "1px solid #1e2130",
-                          background: "#12141c",
-                          color: "#e8eaf0",
-                          fontSize: 15,
-                          outline: "none",
-                        }}
-                      />
+                  {/* ===== REPO LIST SECTION ===== */}
+                  <div style={{ textAlign: "left" }}>
+                    {/* Section Header */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                      <h2 style={{ fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                        <GitFork style={{ width: 20, height: 20, color: "#6366f1" }} />
+                        Your Repositories
+                        {repos.length > 0 && (
+                          <span style={{ fontSize: 12, color: "rgba(232,234,240,0.35)", fontWeight: 400 }}>
+                            ({filteredRepos.length}{filter !== "all" || searchQuery ? ` of ${repos.length}` : ""})
+                          </span>
+                        )}
+                      </h2>
                     </div>
-                    <button
-                      id="analyze-button"
-                      onClick={handleAnalyze}
-                      className="animate-pulse-glow"
-                      style={{
-                        padding: "16px 32px",
-                        borderRadius: 12,
-                        fontWeight: 600,
-                        color: "white",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        border: "none",
-                        cursor: "pointer",
-                        background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                        fontSize: 15,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Analyze <ChevronRight style={{ width: 16, height: 16 }} />
-                    </button>
+
+                    {/* Search + Filters */}
+                    <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                      {/* Search */}
+                      <div style={{ flex: 1, minWidth: 200, position: "relative" }}>
+                        <Search style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "rgba(232,234,240,0.25)" }} />
+                        <input
+                          id="repo-search-input"
+                          type="text"
+                          placeholder="Search repositories..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          style={{
+                            width: "100%",
+                            paddingLeft: 38,
+                            paddingRight: 16,
+                            paddingTop: 10,
+                            paddingBottom: 10,
+                            borderRadius: 10,
+                            border: "1px solid #1e2130",
+                            background: "#12141c",
+                            color: "#e8eaf0",
+                            fontSize: 13,
+                            outline: "none",
+                          }}
+                        />
+                      </div>
+
+                      {/* Filter Buttons */}
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {(["all", "public", "private"] as FilterType[]).map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => setFilter(f)}
+                            style={{
+                              padding: "8px 14px",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              fontWeight: 500,
+                              border: filter === f ? "1px solid rgba(99,102,241,0.5)" : "1px solid #1e2130",
+                              background: filter === f ? "rgba(99,102,241,0.15)" : "transparent",
+                              color: filter === f ? "#818cf8" : "rgba(232,234,240,0.5)",
+                              cursor: "pointer",
+                              transition: "all 0.2s",
+                              textTransform: "capitalize",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            {f === "private" && <Lock style={{ width: 11, height: 11 }} />}
+                            {f === "public" && <Globe style={{ width: 11, height: 11 }} />}
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Repo List */}
+                    {reposLoading ? (
+                      <div style={{ textAlign: "center", padding: "48px 0" }}>
+                        <Loader2 style={{ width: 32, height: 32, color: "#6366f1", animation: "spin 1s linear infinite", margin: "0 auto 12px", display: "block" }} />
+                        <p style={{ color: "rgba(232,234,240,0.4)", fontSize: 14 }}>Fetching your repositories...</p>
+                      </div>
+                    ) : reposError ? (
+                      <div className="glass-card" style={{ padding: 24, textAlign: "center", borderColor: "rgba(239,68,68,0.3)" }}>
+                        <AlertTriangle style={{ width: 24, height: 24, color: "#ef4444", margin: "0 auto 8px", display: "block" }} />
+                        <p style={{ color: "#ef4444", fontSize: 14 }}>{reposError}</p>
+                      </div>
+                    ) : filteredRepos.length === 0 && repos.length > 0 ? (
+                      <div className="glass-card" style={{ padding: 24, textAlign: "center" }}>
+                        <Search style={{ width: 24, height: 24, color: "rgba(232,234,240,0.25)", margin: "0 auto 8px", display: "block" }} />
+                        <p style={{ color: "rgba(232,234,240,0.4)", fontSize: 14 }}>No repos match "{searchQuery}"</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
+                        {filteredRepos.map((repo) => {
+                          const status = repoStatuses[repo.full_name] || "idle";
+                          const langColor = repo.language ? LANG_COLORS[repo.language] || "#888" : null;
+
+                          return (
+                            <div
+                              key={repo.id}
+                              className="glass-card"
+                              style={{
+                                padding: "14px 20px",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 16,
+                                transition: "all 0.2s",
+                                cursor: "default",
+                                borderColor: status === "analyzing" ? "rgba(99,102,241,0.4)" : undefined,
+                              }}
+                            >
+                              {/* Left: Repo Info */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 600, fontSize: 14, color: "#e8eaf0" }}>{repo.name}</span>
+                                  {repo.private ? (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(249,115,22,0.1)", color: "#f97316", border: "1px solid rgba(249,115,22,0.2)" }}>
+                                      <Lock style={{ width: 9, height: 9 }} /> Private
+                                    </span>
+                                  ) : (
+                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16,185,129,0.1)", color: "#10b981", border: "1px solid rgba(16,185,129,0.2)" }}>
+                                      <Globe style={{ width: 9, height: 9 }} /> Public
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Description */}
+                                {repo.description && (
+                                  <p style={{ fontSize: 12, color: "rgba(232,234,240,0.4)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {repo.description}
+                                  </p>
+                                )}
+
+                                {/* Meta row */}
+                                <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, color: "rgba(232,234,240,0.3)" }}>
+                                  {repo.language && langColor && (
+                                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: langColor, display: "inline-block" }} />
+                                      {repo.language}
+                                    </span>
+                                  )}
+                                  {repo.stars > 0 && (
+                                    <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                                      <Star style={{ width: 10, height: 10 }} /> {repo.stars}
+                                    </span>
+                                  )}
+                                  <span>Updated {timeAgo(repo.updated_at)}</span>
+                                </div>
+                              </div>
+
+                              {/* Right: Action Button */}
+                              <div style={{ flexShrink: 0 }}>
+                                {status === "analyzing" ? (
+                                  <button
+                                    disabled
+                                    style={{
+                                      padding: "8px 18px",
+                                      borderRadius: 10,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      border: "none",
+                                      background: "rgba(99,102,241,0.3)",
+                                      color: "#818cf8",
+                                      cursor: "not-allowed",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} /> Analyzing...
+                                  </button>
+                                ) : status === "done" ? (
+                                  <button
+                                    onClick={() => router.push("/dashboard")}
+                                    style={{
+                                      padding: "8px 18px",
+                                      borderRadius: 10,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      border: "none",
+                                      background: "linear-gradient(135deg, #10b981, #059669)",
+                                      color: "white",
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                    }}
+                                  >
+                                    <Eye style={{ width: 13, height: 13 }} /> View Report
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleAnalyzeRepo(repo)}
+                                    style={{
+                                      padding: "8px 18px",
+                                      borderRadius: 10,
+                                      fontSize: 12,
+                                      fontWeight: 600,
+                                      border: "none",
+                                      background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                                      color: "white",
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 6,
+                                      transition: "transform 0.15s",
+                                    }}
+                                    onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+                                    onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                                  >
+                                    Analyze <ChevronRight style={{ width: 13, height: 13 }} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Manual URL fallback */}
+                    <div style={{ marginTop: 20, padding: "16px 20px", border: "1px solid #1e2130", borderRadius: 12, background: "rgba(12,14,22,0.5)" }}>
+                      <p style={{ fontSize: 12, color: "rgba(232,234,240,0.35)", marginBottom: 10 }}>Or paste any GitHub URL:</p>
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <div style={{ flex: 1, position: "relative" }}>
+                          <GitFork style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "rgba(232,234,240,0.25)" }} />
+                          <input
+                            id="repo-url-input"
+                            type="url"
+                            placeholder="https://github.com/owner/repo"
+                            value={repoUrl}
+                            onChange={(e) => { setRepoUrl(e.target.value); setError(""); }}
+                            onKeyDown={(e) => e.key === "Enter" && handleAnalyze()}
+                            style={{
+                              width: "100%",
+                              paddingLeft: 38,
+                              paddingRight: 16,
+                              paddingTop: 10,
+                              paddingBottom: 10,
+                              borderRadius: 10,
+                              border: "1px solid #1e2130",
+                              background: "#12141c",
+                              color: "#e8eaf0",
+                              fontSize: 13,
+                              outline: "none",
+                            }}
+                          />
+                        </div>
+                        <button
+                          id="analyze-button"
+                          onClick={handleAnalyze}
+                          style={{
+                            padding: "10px 20px",
+                            borderRadius: 10,
+                            fontWeight: 600,
+                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            border: "none",
+                            cursor: "pointer",
+                            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                            fontSize: 13,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          Analyze <ChevronRight style={{ width: 14, height: 14 }} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
+
                   {error && (
                     <p style={{ color: "#ef4444", fontSize: 13, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>
                       <AlertTriangle style={{ width: 12, height: 12 }} /> {error}
@@ -314,7 +684,7 @@ export default function LandingPage() {
 
             {/* Trust Signal */}
             <p style={{ fontSize: 12, color: "rgba(232,234,240,0.3)", marginTop: 16 }}>
-              Works with any public GitHub repository • No sign-up required • Results in seconds
+              Works with any public GitHub repository • Results in seconds
             </p>
           </div>
 
@@ -354,7 +724,7 @@ export default function LandingPage() {
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {[
-              { step: "01", title: "Connect Repository", desc: "Paste your GitHub URL. We analyze commits, bugs, contributors, and test coverage." },
+              { step: "01", title: "Connect Repository", desc: "Login with GitHub. Your repos load automatically. Pick one and click Analyze." },
               { step: "02", title: "AI Analysis Pipeline", desc: "5 specialized agents score risk, predict failures, and map business impact — all deterministic." },
               { step: "03", title: "Get Business Intelligence", desc: "Receive a CEO-friendly report with financial exposure, prioritized risks, and action items." },
             ].map(({ step, title, desc }, i) => (
@@ -377,7 +747,10 @@ export default function LandingPage() {
         </h2>
         <p style={{ color: "rgba(232,234,240,0.45)", marginBottom: 32 }}>Analyze your first repository in seconds — completely free.</p>
         <button
-          onClick={() => document.getElementById("repo-url-input")?.focus()}
+          onClick={() => {
+            if (!session) signIn("github");
+            else document.getElementById("repo-search-input")?.focus();
+          }}
           style={{
             padding: "16px 32px",
             borderRadius: 12,
