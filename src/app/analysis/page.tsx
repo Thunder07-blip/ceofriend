@@ -156,63 +156,70 @@ function AnalysisContent() {
           <p style={{ color: "rgba(232,234,240,0.4)", fontSize: 13, fontFamily: "monospace" }}>{repoUrl}</p>
         </div>
 
-        {/* Live Metrics */}
-        <div className="metrics-grid" style={{ marginBottom: 48, maxWidth: 420, width: "100%" }}>
-          {[
-            { label: "Files Analyzed", value: metrics.files, color: "#6366f1" },
-            { label: "High-Risk", value: metrics.risks, color: "#f97316" },
-            { label: "Est. Exposure", value: metrics.loss, color: "#f59e0b" },
-          ].map(({ label, value, color }, i) => (
-            <div key={i} className="glass-card" style={{ padding: 16, textAlign: "center" }}>
-              <div className="animate-count" style={{ fontSize: "1.5rem", fontWeight: 700, color }}>{value}</div>
-              <div style={{ fontSize: 11, color: "rgba(232,234,240,0.35)", marginTop: 4 }}>{label}</div>
-            </div>
-          ))}
-        </div>
+        {/* Two-column layout container */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 64, width: "100%", maxWidth: 1100 }}>
+          
+          {/* Left Column: Stage Progress */}
+          <div style={{ flex: "1 1 450px", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
+            {STAGES.map((stage, i) => {
+              const status = stageStatuses[i];
+              const Icon = stage.icon;
 
-        {/* Stage Progress */}
-        <div style={{ maxWidth: 520, width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
-          {STAGES.map((stage, i) => {
-            const status = stageStatuses[i];
-            const Icon = stage.icon;
+              const containerStyle: React.CSSProperties = {
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: 12,
+                borderRadius: 12,
+                transition: "all 0.5s",
+                opacity: status === "active" ? 1 : status === "done" ? 0.5 : status === "error" ? 1 : 0.25,
+                border: status === "active" ? "1px solid #6366f1" : status === "error" ? "1px solid rgba(239,68,68,0.3)" : "1px solid transparent",
+                background: status === "active" ? "linear-gradient(135deg, rgba(18,20,28,0.95), rgba(26,29,40,0.8))" : status === "error" ? "rgba(239,68,68,0.05)" : "transparent",
+              };
 
-            const containerStyle: React.CSSProperties = {
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: 12,
-              borderRadius: 12,
-              transition: "all 0.5s",
-              opacity: status === "active" ? 1 : status === "done" ? 0.5 : status === "error" ? 1 : 0.25,
-              border: status === "active" ? "1px solid #6366f1" : status === "error" ? "1px solid rgba(239,68,68,0.3)" : "1px solid transparent",
-              background: status === "active" ? "linear-gradient(135deg, rgba(18,20,28,0.95), rgba(26,29,40,0.8))" : status === "error" ? "rgba(239,68,68,0.05)" : "transparent",
-            };
+              const iconBg =
+                status === "done" ? "rgba(16, 185, 129, 0.15)"
+                : status === "error" ? "rgba(239, 68, 68, 0.15)"
+                : status === "active" ? "rgba(99, 102, 241, 0.15)"
+                : "transparent";
 
-            const iconBg =
-              status === "done" ? "rgba(16, 185, 129, 0.15)"
-              : status === "error" ? "rgba(239, 68, 68, 0.15)"
-              : status === "active" ? "rgba(99, 102, 241, 0.15)"
-              : "transparent";
-
-            return (
-              <div key={stage.id} style={containerStyle}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: iconBg }}>
-                  {status === "done" ? (
-                    <CheckCircle2 style={{ width: 16, height: 16, color: "#10b981" }} />
-                  ) : status === "error" ? (
-                    <AlertTriangle style={{ width: 16, height: 16, color: "#ef4444" }} />
-                  ) : status === "active" ? (
-                    <Loader2 style={{ width: 16, height: 16, color: "#6366f1", animation: "spin 1s linear infinite" }} />
-                  ) : (
-                    <Icon style={{ width: 16, height: 16, color: "rgba(232,234,240,0.25)" }} />
-                  )}
+              return (
+                <div key={stage.id} style={containerStyle}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: iconBg }}>
+                    {status === "done" ? (
+                      <CheckCircle2 style={{ width: 16, height: 16, color: "#10b981" }} />
+                    ) : status === "error" ? (
+                      <AlertTriangle style={{ width: 16, height: 16, color: "#ef4444" }} />
+                    ) : status === "active" ? (
+                      <Loader2 style={{ width: 16, height: 16, color: "#6366f1", animation: "spin 1s linear infinite" }} />
+                    ) : (
+                      <Icon style={{ width: 16, height: 16, color: "rgba(232,234,240,0.25)" }} />
+                    )}
+                  </div>
+                  <span style={{ fontSize: 13, color: status === "active" ? "#e8eaf0" : status === "done" ? "rgba(232,234,240,0.5)" : "rgba(232,234,240,0.25)" }}>
+                    {stage.label}
+                  </span>
                 </div>
-                <span style={{ fontSize: 13, color: status === "active" ? "#e8eaf0" : status === "done" ? "rgba(232,234,240,0.5)" : "rgba(232,234,240,0.25)" }}>
-                  {stage.label}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+
+          {/* Right Column: Live Metrics */}
+          <div style={{ flex: "1 1 450px", maxWidth: 500 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, width: "100%" }}>
+              {[
+                { label: "Files Analyzed", value: metrics.files, color: "#6366f1" },
+                { label: "High-Risk", value: metrics.risks, color: "#f97316" },
+                { label: "Est. Exposure", value: metrics.loss, color: "#f59e0b" },
+              ].map(({ label, value, color }, i) => (
+                <div key={i} className="glass-card animate-fade-in" style={{ padding: 20, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <div className="animate-count" style={{ fontSize: "1.75rem", fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+                  <div style={{ fontSize: 12, color: "rgba(232,234,240,0.45)", marginTop: 8 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          
         </div>
 
         {/* Error State */}
