@@ -91,11 +91,12 @@ export default function DashboardPage() {
 
   const healthScore = data.riskData?.repoHealth ?? 0;
   const totalExposure = data.impactData?.totalRiskExposure ?? 0;
-  const highRiskCount = data.riskData?.files.filter((f) => f.riskScore >= 60).length ?? 0;
+  const highRiskCount = data.impactData?.files.filter((f) => f.predictedRisk >= 60).length ?? 0;
   const filesAnalyzed = data.repoData?.files.length ?? 0;
-  const riskLevel = healthScore >= 70 ? "LOW" : healthScore >= 40 ? "HIGH" : "CRITICAL";
-  const riskColor = healthScore >= 70 ? "#10b981" : healthScore >= 40 ? "#f97316" : "#ef4444";
-  const riskBg = healthScore >= 70 ? "rgba(16, 185, 129, 0.1)" : healthScore >= 40 ? "rgba(249, 115, 22, 0.1)" : "rgba(239, 68, 68, 0.1)";
+  
+  const riskLevel = healthScore >= 80 ? "LOW" : healthScore >= 60 ? "MODERATE" : healthScore >= 40 ? "HIGH" : "CRITICAL";
+  const riskColor = healthScore >= 80 ? "#10b981" : healthScore >= 60 ? "#eab308" : healthScore >= 40 ? "#f97316" : "#ef4444";
+  const riskBg = healthScore >= 80 ? "rgba(16, 185, 129, 0.1)" : healthScore >= 60 ? "rgba(234, 179, 8, 0.1)" : healthScore >= 40 ? "rgba(249, 115, 22, 0.1)" : "rgba(239, 68, 68, 0.1)";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
