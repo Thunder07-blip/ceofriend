@@ -75,7 +75,7 @@ function AnalysisContent() {
         });
 
         sessionStorage.setItem("ceofriend_result", JSON.stringify(data.data));
-        setTimeout(() => router.push("/dashboard"), 2500);
+        setTimeout(() => router.replace("/dashboard"), 2500);
       } catch (err) {
         clearInterval(stageTimer);
         setError(err instanceof Error ? err.message : "An error occurred");
