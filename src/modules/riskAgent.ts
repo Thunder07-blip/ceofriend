@@ -19,8 +19,9 @@ const WEIGHTS = {
  * Calculate volatility score (0-100).
  * FIX 2: Add Volatility Floor to prevent zero collapse
  */
-function calcVolatility(recentCommits: number): number {
-  return clamp(Math.max(10, recentCommits * 2), 0, 100);
+function calcVolatility(recentCommits: number, totalCommits: number): number {
+  const safeCommits = Math.max(1, totalCommits);
+  return clamp(Math.round((recentCommits / safeCommits) * 100), 0, 100);
 }
 
 /**
@@ -117,7 +118,7 @@ export function calculateFileRisk(file: {
   size?: number;
 }): FileRisk {
   const breakdown: RiskBreakdown = {
-    volatility: calcVolatility(file.recentCommits),
+    volatility: calcVolatility(file.recentCommits, file.commits),
     bugDensity: calcBugDensity(file.bugs, file.commits),
     ownership: calcOwnership(file.contributors),
     testCoverage: calcTestCoverage(file.hasTests),
@@ -147,7 +148,10 @@ export function calculateFileRisk(file: {
   // Configs are less risky structurally
   else if (lowerFile.includes("config") || lowerFile.endsWith(".json") || lowerFile.endsWith(".gitignore") || lowerFile.endsWith(".md")) importance = 0.8;
 
-  const riskScore = Math.round(baseRisk * importance);
+  let riskScore = baseRisk * importance;
+  // FIX 3: Saturation Curve to avoid maxing out rapidly
+  riskScore = 100 * (1 - Math.exp(-riskScore / 50));
+  riskScore = Math.round(riskScore);
 
   const healthScore = clamp(100 - riskScore, 0, 100);
   const reasons = generateReasons(breakdown, file.hasTests, file.recentCommits, file.bugs, breakdown.uncertainty);
@@ -192,7 +196,20 @@ function calculateRepoHealth(fileRisks: FileRisk[], repoData: RepoData): number 
     weightedHealth += risk.healthScore * weight;
   }
 
-  return Math.round(safeDivide(weightedHealth, totalWeight, 50));
+  let avgHealth = safeDivide(weightedHealth, totalWeight, 50);
+  let avgRisk = 100 - avgHealth;
+
+  // FIX 4: Size Normalization
+  const totalRepoFiles = repoData.summary.totalFiles || 1;
+  const repoSizeFactor = Math.log10(totalRepoFiles + 1);
+  avgRisk = avgRisk / Math.max(1, repoSizeFactor);
+
+  // FIX 5: Outliers 
+  if (totalRepoFiles < 10) {
+    avgRisk *= 0.7; // Small repos get 30% reduction to offset single file variance
+  }
+
+  return clamp(100 - Math.round(avgRisk), 0, 100);
 }
 
 // ---- Public API ----

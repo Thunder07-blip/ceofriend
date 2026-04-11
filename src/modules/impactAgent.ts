@@ -176,7 +176,8 @@ const DEFAULT_MAPPING: BusinessMapping = {
 function getTurnoverScale(yearlyTurnover?: number): number {
   if (!yearlyTurnover || yearlyTurnover <= 0) return 1;
   const baseTurnover = 10_00_00_000; // ₹10 Crore
-  return Math.max(0.1, Math.min(10, yearlyTurnover / baseTurnover));
+  // FIX 6: Turnover Normalization strict bounding
+  return Math.max(0.3, Math.min(3.0, yearlyTurnover / baseTurnover));
 }
 
 /**

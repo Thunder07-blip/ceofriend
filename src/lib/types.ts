@@ -20,6 +20,7 @@ export interface RepoSummary {
   totalBugs: number;
   totalContributors: number;
   analyzedFiles: number;
+  totalFiles: number;
 }
 
 export interface RepoData {

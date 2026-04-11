@@ -67,11 +67,12 @@ export function predictFile(file: {
   const failureProbability = Number((predictedRisk / 100).toFixed(2));
 
   // Step 5: Confidence score (more data = higher confidence)
+  // FIX 7: Normalize confidence bounds
   const confidence = clamp(
     Number(
       (
-        safeDivide(file.commits, 100, 0) * 0.5 +
-        safeDivide(file.bugs, 20, 0) * 0.5
+        safeDivide(file.commits, 50, 0) * 0.7 +
+        safeDivide(file.bugs, 10, 0) * 0.3
       ).toFixed(2)
     ),
     0,

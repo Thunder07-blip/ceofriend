@@ -95,7 +95,7 @@ function hasTestsForFile(filename: string, testPaths: Set<string>): boolean {
 function selectHotspots(
   bugsByFile: Map<string, number>,
   allFiles: { path: string; size: number }[],
-  maxFiles: number = 20
+  maxFiles: number = 30
 ): string[] {
   const scored = new Map<string, number>();
 
@@ -227,6 +227,7 @@ export async function repoAgent(repoUrl: string): Promise<RepoData> {
       totalBugs: issueResult.totalBugs,
       totalContributors: contributorResult.totalContributors,
       analyzedFiles: files.length,
+      totalFiles: contentResult.files.length,
     },
   };
 
