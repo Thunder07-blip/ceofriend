@@ -15,12 +15,13 @@ datasource db {
 // ── NextAuth Models ──────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  createdAt     DateTime  @default(now())
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  companyContext Json?     // Stores the user's permanent company description/settings
+  createdAt      DateTime  @default(now())
 
   accounts     Account[]
   sessions     Session[]

@@ -128,9 +128,10 @@ export default function LandingPage() {
   const [analyzingRepo, setAnalyzingRepo] = useState<string | null>(null);
   const [repoStatuses, setRepoStatuses] = useState<Record<string, RepoStatus>>({});
 
-  // Fetch repos when user logs in
+  // Fetch repos and company context when user logs in
   useEffect(() => {
     if (session) {
+      // Fetch Repos
       setReposLoading(true);
       setReposError("");
       fetch("/api/github/repos")
@@ -150,6 +151,18 @@ export default function LandingPage() {
           setReposError("Failed to load repositories. Please try again.");
         })
         .finally(() => setReposLoading(false));
+
+      // Fetch Company Context
+      fetch("/api/user/company")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.companyContext) {
+            setCompany(data.companyContext as CompanyContext);
+            setHasCompanyContext(true);
+            sessionStorage.setItem("ceofriend_company", JSON.stringify(data.companyContext));
+          }
+        })
+        .catch(console.error);
     }
   }, [session]);
 
@@ -217,10 +230,26 @@ export default function LandingPage() {
     router.push(`/analysis?repo=${encodeURIComponent(repoUrl.trim())}`);
   };
 
-  const handleSaveCompany = () => {
+  const handleSaveCompany = async () => {
     if (company.yearlyTurnover <= 0 || company.criticalSystems.length === 0) {
       return;
     }
+
+    try {
+      if (session) {
+        const res = await fetch("/api/user/company", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(company),
+        });
+        if (!res.ok) {
+          console.warn("Failed to persist company to database");
+        }
+      }
+    } catch (err) {
+      console.warn("Network error saving company", err);
+    }
+
     setHasCompanyContext(true);
     setShowModal(false);
     setError("");
