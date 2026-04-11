@@ -159,7 +159,23 @@ function AnalysisContent() {
         {/* Two-column layout container */}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: 64, width: "100%", maxWidth: 1100 }}>
           
-          {/* Left Column: Stage Progress */}
+          {/* Left Column: Live Metrics */}
+          <div style={{ flex: "1 1 450px", maxWidth: 500 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, width: "100%" }}>
+              {[
+                { label: "Files Analyzed", value: metrics.files, color: "#6366f1" },
+                { label: "High-Risk", value: metrics.risks, color: "#f97316" },
+                { label: "Est. Exposure", value: metrics.loss, color: "#f59e0b" },
+              ].map(({ label, value, color }, i) => (
+                <div key={i} className="glass-card animate-fade-in" style={{ padding: 20, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                  <div className="animate-count" style={{ fontSize: "1.75rem", fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
+                  <div style={{ fontSize: 12, color: "rgba(232,234,240,0.45)", marginTop: 8 }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Right Column: Stage Progress */}
           <div style={{ flex: "1 1 450px", maxWidth: 520, display: "flex", flexDirection: "column", gap: 8 }}>
             {STAGES.map((stage, i) => {
               const status = stageStatuses[i];
@@ -202,22 +218,6 @@ function AnalysisContent() {
                 </div>
               );
             })}
-          </div>
-
-          {/* Right Column: Live Metrics */}
-          <div style={{ flex: "1 1 450px", maxWidth: 500 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, width: "100%" }}>
-              {[
-                { label: "Files Analyzed", value: metrics.files, color: "#6366f1" },
-                { label: "High-Risk", value: metrics.risks, color: "#f97316" },
-                { label: "Est. Exposure", value: metrics.loss, color: "#f59e0b" },
-              ].map(({ label, value, color }, i) => (
-                <div key={i} className="glass-card animate-fade-in" style={{ padding: 20, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                  <div className="animate-count" style={{ fontSize: "1.75rem", fontWeight: 700, color, lineHeight: 1 }}>{value}</div>
-                  <div style={{ fontSize: 12, color: "rgba(232,234,240,0.45)", marginTop: 8 }}>{label}</div>
-                </div>
-              ))}
-            </div>
           </div>
           
         </div>
